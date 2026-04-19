@@ -970,6 +970,143 @@ function ReportsScreen({ navigate }) {
   )
 }
 
+// ── 月次報告書 ────────────────────────────────────────────────
+function MonthlyScreen({ navigate }) {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
+  const patients   = LS.get('patients', [])
+  const therapists = LS.get('therapists', [])
+  const reports    = LS.get('reports', [])
+  const officeName = LS.get('officeName', 'ハーベスト訪問施術院')
+
+  const patMap = Object.fromEntries(patients.map(p => [p.id, p]))
+  const theMap = Object.fromEntries(therapists.map(t => [t.id, t]))
+
+  const monthReports = reports.filter(r => r.date?.startsWith(month))
+
+  // 患者別集計
+  const summary = {}
+  monthReports.forEach(r => {
+    if (!summary[r.patientId]) {
+      summary[r.patientId] = { patientId: r.patientId, count: 0, totalMin: 0, parts: {}, treatments: {}, records: [] }
+    }
+    const s = summary[r.patientId]
+    s.count++
+    s.totalMin += Number(r.duration) || 0
+    r.bodyParts?.forEach(b => { s.parts[b] = (s.parts[b] || 0) + 1 })
+    r.treatments?.forEach(t => { s.treatments[t] = (s.treatments[t] || 0) + 1 })
+    s.records.push(r)
+  })
+
+  const printStyle = `
+    @media print {
+      body { font-family: 'Hiragino Mincho ProN','Yu Mincho',serif; font-size: 10pt; color: #000; background: #fff; }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+    }
+  `
+
+  const topParts = (parts) => Object.entries(parts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k).join('・') || '—'
+  const topTreats = (ts) => Object.entries(ts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k).join('・') || '—'
+  const fmtMonth = (m) => { const [y, mo] = m.split('-'); return `${y}年${Number(mo)}月` }
+
+  return (
+    <div>
+      <style>{printStyle}</style>
+
+      <div className="no-print" style={{ ...s.pageWrap, paddingBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <button onClick={() => navigate('home')} style={s.btn(C.gray2, C.sumi)}>
+            <ChevronLeft size={16} />
+          </button>
+          <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>月次報告書</h2>
+          <button onClick={() => window.print()} style={s.btn(C.kincha)}>印刷</button>
+        </div>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ ...s.input, marginBottom: 12 }} />
+        <div style={{ fontSize: 12, color: C.gray3 }}>
+          {monthReports.length}件 / {Object.keys(summary).length}名
+        </div>
+      </div>
+
+      {/* 印刷対象コンテンツ */}
+      <div style={{ padding: '0 16px 80px', maxWidth: 640, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', borderBottom: `2px solid ${C.ai}`, paddingBottom: 10, marginBottom: 20 }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>月次施術報告書</div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>{fmtMonth(month)}</div>
+          <div style={{ fontSize: 12, color: C.gray3, marginTop: 2 }}>{officeName}</div>
+        </div>
+
+        {Object.keys(summary).length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: C.gray3 }}>この月の日報はありません</div>
+        )}
+
+        {Object.values(summary).map((su, idx) => {
+          const p = patMap[su.patientId]
+          const avg = su.count > 0 ? Math.round(su.totalMin / su.count) : 0
+          return (
+            <div key={su.patientId} style={{ marginBottom: 32, ...(idx > 0 ? { borderTop: `1px solid ${C.gray2}`, paddingTop: 24 } : {}) }}>
+              {/* 患者ヘッダー */}
+              <div style={{ background: C.ai, color: C.white, padding: '8px 12px', borderRadius: 6, marginBottom: 10 }}>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{p?.name || su.patientId}</span>
+                {p && <span style={{ fontSize: 12, opacity: 0.8, marginLeft: 8 }}>{p.furigana} / {p.age}歳 {p.gender}</span>}
+              </div>
+
+              {/* 集計サマリー */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
+                {[
+                  { label: '施術回数', value: `${su.count}回` },
+                  { label: '総施術時間', value: `${su.totalMin}分` },
+                  { label: '平均施術時間', value: `${avg}分` },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ ...s.card, textAlign: 'center', padding: '8px 4px', marginBottom: 0 }}>
+                    <div style={{ fontSize: 10, color: C.gray3 }}>{label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: C.ai }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}><strong>主な施術部位:</strong> {topParts(su.parts)}</div>
+              <div style={{ fontSize: 12, marginBottom: 12 }}><strong>主な施術内容:</strong> {topTreats(su.treatments)}</div>
+
+              {/* 訪問記録一覧 */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: C.gray1 }}>
+                    {['日付','時間','担当者','部位','バイタル'].map(h => (
+                      <th key={h} style={{ padding: '5px 6px', textAlign: 'left', borderBottom: `1px solid ${C.gray2}`, fontWeight: 600 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {su.records.sort((a,b)=>a.date.localeCompare(b.date)).map(r => (
+                    <tr key={r.id} style={{ borderBottom: `1px solid ${C.gray2}` }}>
+                      <td style={{ padding: '5px 6px' }}>{r.date?.slice(5)}</td>
+                      <td style={{ padding: '5px 6px' }}>{r.startTime}〜{r.endTime}</td>
+                      <td style={{ padding: '5px 6px' }}>{theMap[r.therapistId]?.name || '—'}</td>
+                      <td style={{ padding: '5px 6px' }}>{r.bodyParts?.slice(0,2).join('・') || '—'}</td>
+                      <td style={{ padding: '5px 6px' }}>
+                        {r.vitals?.bpSys ? `${r.vitals.bpSys}/${r.vitals.bpDia}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* 押印欄 */}
+              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 28 }}>
+                {['確認者印', '担当者印', '管理者印'].map(label => (
+                  <div key={label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, marginBottom: 4 }}>{label}</div>
+                    <div style={{ width: 52, height: 52, border: `1px solid ${C.sumi}`, borderRadius: '50%' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -1034,7 +1171,7 @@ export default function App() {
       case 'report_new': return <ReportNewScreen navigate={navigate} param={param} />
       case 'reports':       return <ReportsScreen navigate={navigate} />
       case 'report_detail': return <ReportDetailScreen navigate={navigate} param={param} />
-      case 'monthly':    return <PlaceholderScreen title="月次報告書" navigate={navigate} />
+      case 'monthly':    return <MonthlyScreen navigate={navigate} />
       case 'settings':   return <PlaceholderScreen title="設定" navigate={navigate} />
       default:           return <HomeScreen navigate={navigate} />
     }
