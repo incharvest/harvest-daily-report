@@ -506,6 +506,237 @@ function ScheduleScreen({ navigate }) {
   )
 }
 
+// ── 日報作成 ─────────────────────────────────────────────────
+const BODY_PARTS = ['頭部','頸部','肩（右）','肩（左）','肩甲骨周囲（右）','肩甲骨周囲（左）','上肢（右）','上肢（左）','腰背部','臀部（右）','臀部（左）','下肢（右）','下肢（左）','足部（右）','足部（左）']
+const TREATMENTS  = ['按摩','マッサージ','指圧','関節可動域訓練','ストレッチ','温罨法','変形徒手矯正術']
+const DURATIONS   = [15, 20, 30, 40, 60]
+
+function addMinutes(timeStr, mins) {
+  const [h, m] = timeStr.split(':').map(Number)
+  const total = h * 60 + m + mins
+  return `${String(Math.floor(total / 60) % 24).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`
+}
+
+function TagSelect({ options, selected, onChange, color }) {
+  const toggle = (v) => onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v])
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {options.map(o => {
+        const active = selected.includes(o)
+        return (
+          <button key={o} onClick={() => toggle(o)} style={{
+            border: `1px solid ${active ? color : C.gray2}`,
+            background: active ? color : C.white,
+            color: active ? C.white : C.sumi,
+            borderRadius: 99, padding: '5px 12px', fontSize: 12, fontWeight: active ? 700 : 400,
+          }}>{o}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ReportNewScreen({ navigate, param }) {
+  const patients   = LS.get('patients', [])
+  const therapists = LS.get('therapists', [])
+  const visits     = LS.get('visits', [])
+
+  const initVisit = param?.visitId ? visits.find(v => v.id === param.visitId) : null
+
+  const now      = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
+  const nowTime  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+
+  const [date, setDate]               = useState(initVisit?.date || param?.date || todayStr)
+  const [patientId, setPatientId]     = useState(initVisit?.patientId || '')
+  const [therapistId, setTherapistId] = useState(initVisit?.therapistId || '')
+  const [startTime, setStartTime]     = useState(initVisit?.startTime || nowTime)
+  const [duration, setDuration]       = useState(initVisit?.duration || 30)
+  const [endTime, setEndTime]         = useState(initVisit?.endTime || addMinutes(nowTime, 30))
+  const [bpSys, setBpSys]             = useState('')
+  const [bpDia, setBpDia]             = useState('')
+  const [pulse, setPulse]             = useState('')
+  const [temp, setTemp]               = useState('')
+  const [bodyParts, setBodyParts]     = useState([])
+  const [treatments, setTreatments]   = useState([])
+  const [findings, setFindings]       = useState('')
+  const [improvements, setImprovements] = useState('')
+  const [nextPlan, setNextPlan]       = useState('')
+  const [notes, setNotes]             = useState('')
+
+  const patient = patients.find(p => p.id === patientId)
+
+  const handlePatientChange = (id) => {
+    setPatientId(id)
+  }
+
+  const handleDuration = (d) => {
+    setDuration(d)
+    setEndTime(addMinutes(startTime, d))
+  }
+
+  const handleStartTime = (t) => {
+    setStartTime(t)
+    setEndTime(addMinutes(t, duration))
+  }
+
+  const handleSave = () => {
+    if (!patientId) { alert('患者を選択してください'); return }
+    if (!therapistId) { alert('施術者を選択してください'); return }
+
+    const report = {
+      id:          'r' + Date.now(),
+      visitId:     initVisit?.id || null,
+      date, patientId, therapistId,
+      startTime, endTime, duration,
+      vitals:      { bpSys, bpDia, pulse, temp },
+      bodyParts, treatments,
+      findings, improvements, nextPlan, notes,
+      createdAt:   new Date().toISOString(),
+    }
+
+    // 行程表に訪問が無ければ追加
+    if (!initVisit) {
+      const newVisit = { id: 'v' + Date.now(), date, patientId, therapistId, startTime, endTime, duration }
+      LS.set('visits', [...visits, newVisit])
+      report.visitId = newVisit.id
+    }
+
+    const existing = LS.get('reports', [])
+    LS.set('reports', [...existing, report])
+    alert('日報を保存しました')
+    navigate('reports')
+  }
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('schedule')} style={s.btn(C.gray2, C.sumi)}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>日報作成</h2>
+      </div>
+
+      {/* 基本情報 */}
+      <div style={s.section}>基本情報</div>
+      <div style={s.card}>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>日付</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={s.input} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>患者 <span style={{ color: '#c00' }}>*</span></label>
+          <select value={patientId} onChange={e => handlePatientChange(e.target.value)} style={s.input}>
+            <option value="">選択してください</option>
+            {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {patient?.symptoms && (
+            <div style={{ fontSize: 12, color: C.ai, marginTop: 6, padding: '6px 8px', background: '#eef2f8', borderRadius: 6 }}>
+              症状: {patient.symptoms}
+            </div>
+          )}
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>施術者 <span style={{ color: '#c00' }}>*</span></label>
+          <select value={therapistId} onChange={e => setTherapistId(e.target.value)} style={s.input}>
+            <option value="">選択してください</option>
+            {therapists.filter(t => String(t.active) === 'true').map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label style={s.label}>開始時刻</label>
+            <input type="time" value={startTime} onChange={e => handleStartTime(e.target.value)} style={s.input} />
+          </div>
+          <div>
+            <label style={s.label}>終了時刻</label>
+            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={s.input} />
+          </div>
+        </div>
+        <div>
+          <label style={s.label}>施術時間（分）</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {DURATIONS.map(d => (
+              <button key={d} onClick={() => handleDuration(d)} style={{
+                border: `1px solid ${duration === d ? C.ai : C.gray2}`,
+                background: duration === d ? C.ai : C.white,
+                color: duration === d ? C.white : C.sumi,
+                borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: duration === d ? 700 : 400,
+              }}>{d}分</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* バイタル */}
+      <div style={s.section}>バイタルサイン</div>
+      <div style={s.card}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={s.label}>血圧 収縮期（mmHg）</label>
+            <input type="number" value={bpSys} onChange={e => setBpSys(e.target.value)} placeholder="例: 120" style={s.input} />
+          </div>
+          <div>
+            <label style={s.label}>血圧 拡張期（mmHg）</label>
+            <input type="number" value={bpDia} onChange={e => setBpDia(e.target.value)} placeholder="例: 80" style={s.input} />
+          </div>
+          <div>
+            <label style={s.label}>脈拍（回/分）</label>
+            <input type="number" value={pulse} onChange={e => setPulse(e.target.value)} placeholder="例: 72" style={s.input} />
+          </div>
+          <div>
+            <label style={s.label}>体温（℃）</label>
+            <input type="number" step="0.1" value={temp} onChange={e => setTemp(e.target.value)} placeholder="例: 36.5" style={s.input} />
+          </div>
+        </div>
+      </div>
+
+      {/* 施術部位 */}
+      <div style={s.section}>施術部位</div>
+      <div style={s.card}>
+        <TagSelect options={BODY_PARTS} selected={bodyParts} onChange={setBodyParts} color={C.ai} />
+      </div>
+
+      {/* 施術内容 */}
+      <div style={s.section}>施術内容</div>
+      <div style={s.card}>
+        <TagSelect options={TREATMENTS} selected={treatments} onChange={setTreatments} color={C.kincha} />
+      </div>
+
+      {/* 所見・申し送り */}
+      <div style={s.section}>所見・記録</div>
+      <div style={s.card}>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>所見・状態</label>
+          <textarea value={findings} onChange={e => setFindings(e.target.value)}
+            placeholder="施術中の状態、反応など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>改善・変化</label>
+          <textarea value={improvements} onChange={e => setImprovements(e.target.value)}
+            placeholder="前回比の変化、改善点など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={s.label}>次回計画</label>
+          <textarea value={nextPlan} onChange={e => setNextPlan(e.target.value)}
+            placeholder="次回の施術方針、注意点など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
+        </div>
+        <div>
+          <label style={s.label}>備考</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="その他、申し送り事項" style={{ ...s.input, height: 60, resize: 'vertical' }} />
+        </div>
+      </div>
+
+      <button onClick={handleSave} style={{ ...s.btn(), width: '100%', justifyContent: 'center', padding: 14, fontSize: 15 }}>
+        <Save size={16} /> 日報を保存する
+      </button>
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -567,6 +798,7 @@ export default function App() {
       case 'schedule':   return <ScheduleScreen navigate={navigate} />
       case 'patients':   return <PatientsScreen navigate={navigate} />
       case 'therapists': return <TherapistsScreen navigate={navigate} />
+      case 'report_new': return <ReportNewScreen navigate={navigate} param={param} />
       case 'reports':    return <PlaceholderScreen title="日報" navigate={navigate} />
       case 'monthly':    return <PlaceholderScreen title="月次報告書" navigate={navigate} />
       case 'settings':   return <PlaceholderScreen title="設定" navigate={navigate} />
