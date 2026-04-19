@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { Home, Users, UserCheck, FileText, BarChart2, Settings, Menu, X, ChevronLeft, Plus, Search, Edit2, Trash2, Save, XCircle } from 'lucide-react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { Home, Users, UserCheck, FileText, BarChart2, Settings, Menu, X, ChevronLeft, Plus, Search, Edit2, Trash2, Save, XCircle, Mic, MicOff } from 'lucide-react'
 
 // ── カラーパレット ──────────────────────────────────────────
 const C = {
@@ -517,6 +517,68 @@ function addMinutes(timeStr, mins) {
   return `${String(Math.floor(total / 60) % 24).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`
 }
 
+// ── 音声入力テキストエリア ────────────────────────────────────
+function VoiceTextarea({ label, value, onChange, placeholder }) {
+  const [listening, setListening] = useState(false)
+  const recogRef = useRef(null)
+
+  const supported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const toggleVoice = () => {
+    if (!supported) { alert('このブラウザは音声入力に対応していません'); return }
+    if (listening) {
+      recogRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recog = new SpeechRecognition()
+    recog.lang = 'ja-JP'
+    recog.continuous = true
+    recog.interimResults = true
+    let base = value
+
+    recog.onresult = (e) => {
+      let interim = ''
+      let final = base
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          final += e.results[i][0].transcript
+          base = final
+        } else {
+          interim = e.results[i][0].transcript
+        }
+      }
+      onChange(final + interim)
+    }
+    recog.onend = () => { setListening(false); onChange(base) }
+    recog.onerror = () => { setListening(false) }
+    recogRef.current = recog
+    recog.start()
+    setListening(true)
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <label style={{ ...s.label, marginBottom: 0 }}>{label}</label>
+        <button onClick={toggleVoice} style={{
+          border: 'none', background: listening ? '#fee' : C.gray1,
+          color: listening ? '#c00' : C.gray3,
+          borderRadius: 99, padding: '3px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          {listening ? <><MicOff size={12} /> 停止</> : <><Mic size={12} /> 音声</>}
+        </button>
+      </div>
+      <textarea value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...s.input, height: 80, resize: 'vertical', borderColor: listening ? '#c00' : C.gray2 }} />
+      {listening && <div style={{ fontSize: 11, color: '#c00', marginTop: 2 }}>● 録音中...</div>}
+    </div>
+  )
+}
+
 function TagSelect({ options, selected, onChange, color }) {
   const toggle = (v) => onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v])
   return (
@@ -708,21 +770,12 @@ function ReportNewScreen({ navigate, param }) {
       {/* 所見・申し送り */}
       <div style={s.section}>所見・記録</div>
       <div style={s.card}>
-        <div style={{ marginBottom: 12 }}>
-          <label style={s.label}>所見・状態</label>
-          <textarea value={findings} onChange={e => setFindings(e.target.value)}
-            placeholder="施術中の状態、反応など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={s.label}>改善・変化</label>
-          <textarea value={improvements} onChange={e => setImprovements(e.target.value)}
-            placeholder="前回比の変化、改善点など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={s.label}>次回計画</label>
-          <textarea value={nextPlan} onChange={e => setNextPlan(e.target.value)}
-            placeholder="次回の施術方針、注意点など" style={{ ...s.input, height: 80, resize: 'vertical' }} />
-        </div>
+        <VoiceTextarea label="所見・状態" value={findings} onChange={setFindings}
+          placeholder="施術中の状態、反応など" />
+        <VoiceTextarea label="改善・変化" value={improvements} onChange={setImprovements}
+          placeholder="前回比の変化、改善点など" />
+        <VoiceTextarea label="次回計画" value={nextPlan} onChange={setNextPlan}
+          placeholder="次回の施術方針、注意点など" />
         <div>
           <label style={s.label}>備考</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
