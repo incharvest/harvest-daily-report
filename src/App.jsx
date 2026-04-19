@@ -1107,7 +1107,129 @@ function MonthlyScreen({ navigate }) {
   )
 }
 
-// ── プレースホルダー画面（未実装） ──────────────────────────
+// ── 設定画面 ─────────────────────────────────────────────────
+function SettingsScreen({ navigate }) {
+  const [officeName, setOfficeName] = useState(() => LS.get('officeName', 'ハーベスト訪問施術院'))
+  const [saved, setSaved]           = useState(false)
+
+  const patients   = LS.get('patients', [])
+  const therapists = LS.get('therapists', [])
+  const visits     = LS.get('visits', [])
+  const reports    = LS.get('reports', [])
+
+  const handleSaveName = () => {
+    LS.set('officeName', officeName)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleBackup = () => {
+    const data = { officeName, patients, therapists, visits, reports, exportedAt: new Date().toISOString() }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `harvest-backup-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleRestore = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result)
+        if (!confirm('現在のデータをすべて上書きしますか？')) return
+        if (data.officeName)  LS.set('officeName', data.officeName)
+        if (data.patients)    LS.set('patients',   data.patients)
+        if (data.therapists)  LS.set('therapists', data.therapists)
+        if (data.visits)      LS.set('visits',     data.visits)
+        if (data.reports)     LS.set('reports',    data.reports)
+        alert('データを復元しました。ページをリロードしてください。')
+        window.location.reload()
+      } catch {
+        alert('ファイルの読み込みに失敗しました')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleReset = () => {
+    if (!confirm('全データを削除します。この操作は取り消せません。本当によろしいですか？')) return
+    if (!confirm('本当に削除しますか？')) return
+    ['patients','therapists','visits','reports','officeName','demo_initialized'].forEach(k => localStorage.removeItem(k))
+    alert('データを削除しました。ページをリロードしてください。')
+    window.location.reload()
+  }
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('home')} style={s.btn(C.gray2, C.sumi)}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>設定</h2>
+      </div>
+
+      {/* 事業所名 */}
+      <div style={s.section}>事業所情報</div>
+      <div style={s.card}>
+        <label style={s.label}>事業所名</label>
+        <input value={officeName} onChange={e => setOfficeName(e.target.value)} style={{ ...s.input, marginBottom: 10 }} />
+        <button onClick={handleSaveName} style={s.btn()}>
+          <Save size={14} /> {saved ? '保存しました ✓' : '保存'}
+        </button>
+      </div>
+
+      {/* データ件数 */}
+      <div style={s.section}>データ件数</div>
+      <div style={s.card}>
+        {[
+          ['患者',    patients.length],
+          ['施術者',  therapists.length],
+          ['行程表（訪問）', visits.length],
+          ['日報',    reports.length],
+        ].map(([label, count]) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.gray2}` }}>
+            <span style={{ fontSize: 14 }}>{label}</span>
+            <span style={{ fontWeight: 700, color: C.ai }}>{count} 件</span>
+          </div>
+        ))}
+      </div>
+
+      {/* バックアップ */}
+      <div style={s.section}>バックアップ / 復元</div>
+      <div style={s.card}>
+        <button onClick={handleBackup} style={{ ...s.btn(C.kincha), width: '100%', justifyContent: 'center', marginBottom: 10 }}>
+          JSONバックアップをダウンロード
+        </button>
+        <label style={{ ...s.btn(C.gray1, C.sumi), width: '100%', justifyContent: 'center', display: 'flex' }}>
+          JSONファイルから復元
+          <input type="file" accept=".json" onChange={handleRestore} style={{ display: 'none' }} />
+        </label>
+      </div>
+
+      {/* リセット */}
+      <div style={s.section}>データリセット</div>
+      <div style={s.card}>
+        <div style={{ fontSize: 13, color: C.gray3, marginBottom: 10 }}>
+          全データ（患者・施術者・日報・行程表）を削除します。この操作は取り消せません。
+        </div>
+        <button onClick={handleReset} style={{ ...s.btn('#fee', '#c00'), width: '100%', justifyContent: 'center' }}>
+          全データをリセット
+        </button>
+      </div>
+
+      <div style={{ fontSize: 11, color: C.gray3, textAlign: 'center', marginTop: 24 }}>
+        訪問施術 業務システム v1.0.0
+      </div>
+    </div>
+  )
+}
+
+// ── プレースホルダー（将来拡張用） ───────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
     <div style={s.pageWrap}>
@@ -1116,7 +1238,6 @@ function PlaceholderScreen({ title, navigate }) {
       </button>
       <div style={{ ...s.card, textAlign: 'center', padding: 40 }}>
         <div style={{ fontSize: 16, color: C.gray3 }}>{title}</div>
-        <div style={{ fontSize: 12, color: C.gray3, marginTop: 8 }}>実装中...</div>
       </div>
     </div>
   )
@@ -1172,7 +1293,7 @@ export default function App() {
       case 'reports':       return <ReportsScreen navigate={navigate} />
       case 'report_detail': return <ReportDetailScreen navigate={navigate} param={param} />
       case 'monthly':    return <MonthlyScreen navigate={navigate} />
-      case 'settings':   return <PlaceholderScreen title="設定" navigate={navigate} />
+      case 'settings':   return <SettingsScreen navigate={navigate} />
       default:           return <HomeScreen navigate={navigate} />
     }
   }
