@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Home, Users, UserCheck, FileText, BarChart2, Settings, Menu, X, ChevronLeft } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Home, Users, UserCheck, FileText, BarChart2, Settings, Menu, X, ChevronLeft, Plus, Search, Edit2, Trash2, Save, XCircle } from 'lucide-react'
 
 // ── カラーパレット ──────────────────────────────────────────
 const C = {
@@ -137,6 +137,145 @@ function HomeScreen({ navigate }) {
   )
 }
 
+// ── 患者マスタ ───────────────────────────────────────────────
+const PATIENT_FIELDS = [
+  { key: 'name',        label: '氏名',         required: true },
+  { key: 'furigana',   label: 'フリガナ' },
+  { key: 'age',         label: '年齢',         type: 'number' },
+  { key: 'gender',      label: '性別',         type: 'select', options: ['','男','女','その他'] },
+  { key: 'phone',       label: '電話番号',     type: 'tel' },
+  { key: 'address',     label: '住所' },
+  { key: 'symptoms',    label: '症状・主訴',   type: 'textarea' },
+  { key: 'insurance',   label: '保険種別',     type: 'select', options: ['','健康保険','介護保険','自費','その他'] },
+  { key: 'insuranceNo', label: '保険証番号' },
+  { key: 'doctor',      label: '同意医師名' },
+  { key: 'hospital',    label: '医療機関名' },
+  { key: 'notes',       label: '備考',         type: 'textarea' },
+]
+
+function emptyPatient() {
+  return { id: '', name: '', furigana: '', age: '', gender: '', phone: '', address: '', symptoms: '', insurance: '', insuranceNo: '', doctor: '', hospital: '', notes: '' }
+}
+
+function PatientForm({ initial, onSave, onCancel }) {
+  const [data, setData] = useState(initial || emptyPatient())
+  const set = (k, v) => setData(d => ({ ...d, [k]: v }))
+
+  return (
+    <div style={s.card}>
+      {PATIENT_FIELDS.map(({ key, label, type, options, required }) => (
+        <div key={key} style={{ marginBottom: 12 }}>
+          <label style={s.label}>{label}{required && <span style={{ color: '#c00' }}> *</span>}</label>
+          {type === 'textarea' ? (
+            <textarea value={data[key]} onChange={e => set(key, e.target.value)}
+              style={{ ...s.input, height: 72, resize: 'vertical' }} />
+          ) : type === 'select' ? (
+            <select value={data[key]} onChange={e => set(key, e.target.value)} style={s.input}>
+              {options.map(o => <option key={o} value={o}>{o || '選択...'}</option>)}
+            </select>
+          ) : (
+            <input type={type || 'text'} value={data[key]} onChange={e => set(key, e.target.value)} style={s.input} />
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <button onClick={() => { if (!data.name.trim()) { alert('氏名は必須です'); return } onSave(data) }}
+          style={{ ...s.btn(), flex: 1 }}>
+          <Save size={15} /> 保存
+        </button>
+        <button onClick={onCancel} style={{ ...s.btn(C.gray2, C.sumi), flex: 1 }}>
+          <XCircle size={15} /> キャンセル
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PatientsScreen({ navigate }) {
+  const [patients, setPatients]   = useState(() => LS.get('patients', []))
+  const [search, setSearch]       = useState('')
+  const [editing, setEditing]     = useState(null)
+  const [adding, setAdding]       = useState(false)
+
+  const save = (ps) => { setPatients(ps); LS.set('patients', ps) }
+
+  const handleSave = (data) => {
+    if (data.id) {
+      save(patients.map(p => p.id === data.id ? data : p))
+    } else {
+      save([...patients, { ...data, id: 'p' + Date.now() }])
+    }
+    setEditing(null); setAdding(false)
+  }
+
+  const handleDelete = (id) => {
+    if (!confirm('この患者を削除しますか？')) return
+    save(patients.filter(p => p.id !== id))
+  }
+
+  const filtered = patients.filter(p =>
+    !search || p.name.includes(search) || p.furigana.includes(search) || p.phone?.includes(search)
+  )
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('home')} style={{ ...s.btn(C.gray2, C.sumi) }}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>患者マスタ</h2>
+        <button onClick={() => { setAdding(true); setEditing(null) }} style={s.btn()}>
+          <Plus size={15} /> 新規
+        </button>
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.gray3 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="氏名・フリガナ・電話で検索" style={{ ...s.input, paddingLeft: 30 }} />
+      </div>
+
+      {adding && (
+        <PatientForm initial={emptyPatient()} onSave={handleSave} onCancel={() => setAdding(false)} />
+      )}
+
+      {filtered.length === 0 && !adding && (
+        <div style={{ ...s.card, textAlign: 'center', padding: 32, color: C.gray3 }}>患者が見つかりません</div>
+      )}
+
+      {filtered.map(p => (
+        editing?.id === p.id ? (
+          <PatientForm key={p.id} initial={editing} onSave={handleSave} onCancel={() => setEditing(null)} />
+        ) : (
+          <div key={p.id} style={s.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: C.gray3 }}>{p.furigana}</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>
+                  {p.age && `${p.age}歳`}{p.gender && `・${p.gender}`}{p.insurance && ` ／ ${p.insurance}`}
+                </div>
+                {p.symptoms && <div style={{ fontSize: 12, color: C.ai, marginTop: 4 }}>症状: {p.symptoms}</div>}
+                {p.phone && <div style={{ fontSize: 12, color: C.gray3 }}>{p.phone}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setEditing(p); setAdding(false) }}
+                  style={{ ...s.btn(C.gray1, C.sumi), padding: '6px 10px' }}>
+                  <Edit2 size={14} />
+                </button>
+                <button onClick={() => handleDelete(p.id)}
+                  style={{ ...s.btn('#fee', '#c00'), padding: '6px 10px' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      ))}
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -196,7 +335,7 @@ export default function App() {
     switch (screen) {
       case 'home':       return <HomeScreen navigate={navigate} />
       case 'schedule':   return <PlaceholderScreen title="行程表" navigate={navigate} />
-      case 'patients':   return <PlaceholderScreen title="患者マスタ" navigate={navigate} />
+      case 'patients':   return <PatientsScreen navigate={navigate} />
       case 'therapists': return <PlaceholderScreen title="施術者マスタ" navigate={navigate} />
       case 'reports':    return <PlaceholderScreen title="日報" navigate={navigate} />
       case 'monthly':    return <PlaceholderScreen title="月次報告書" navigate={navigate} />
