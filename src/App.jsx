@@ -411,6 +411,101 @@ function TherapistsScreen({ navigate }) {
   )
 }
 
+// ── 行程表 ───────────────────────────────────────────────────
+function addDays(dateStr, n) {
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+function fmtDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const days = ['日','月','火','水','木','金','土']
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${days[d.getDay()]}）`
+}
+
+function ScheduleScreen({ navigate }) {
+  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10))
+  const patients            = LS.get('patients', [])
+  const therapists          = LS.get('therapists', [])
+  const visits              = LS.get('visits', [])
+  const reports             = LS.get('reports', [])
+
+  const dayVisits = visits
+    .filter(v => v.date === date)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+  const patMap  = Object.fromEntries(patients.map(p => [p.id, p]))
+  const theMap  = Object.fromEntries(therapists.map(t => [t.id, t]))
+  const repMap  = Object.fromEntries(reports.map(r => [r.visitId, r]))
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('home')} style={s.btn(C.gray2, C.sumi)}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>行程表</h2>
+        <button onClick={() => navigate('report_new', { date })} style={s.btn()}>
+          <Plus size={15} /> 日報作成
+        </button>
+      </div>
+
+      {/* 日付ナビゲーション */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, ...s.card, padding: '10px 12px' }}>
+        <button onClick={() => setDate(addDays(date, -1))} style={{ ...s.btn(C.gray1, C.sumi), padding: '6px 12px' }}>‹</button>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ ...s.input, flex: 1, textAlign: 'center', border: 'none', background: 'transparent', fontSize: 15, fontWeight: 600 }} />
+        <button onClick={() => setDate(addDays(date, 1))} style={{ ...s.btn(C.gray1, C.sumi), padding: '6px 12px' }}>›</button>
+      </div>
+      <div style={{ textAlign: 'center', fontSize: 13, color: C.gray3, marginBottom: 12 }}>{fmtDate(date)}</div>
+
+      {dayVisits.length === 0 && (
+        <div style={{ ...s.card, textAlign: 'center', padding: 40, color: C.gray3 }}>
+          この日の予定はありません
+        </div>
+      )}
+
+      {/* タイムライン */}
+      {dayVisits.map((v, i) => {
+        const p    = patMap[v.patientId]
+        const t    = theMap[v.therapistId]
+        const done = !!repMap[v.id]
+        return (
+          <div key={v.id} style={{ display: 'flex', gap: 10, marginBottom: 4 }}>
+            {/* 時刻・線 */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 44 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.ai }}>{v.startTime}</div>
+              <div style={{ flex: 1, width: 2, background: C.gray2, margin: '4px 0' }} />
+              {i === dayVisits.length - 1 && <div style={{ fontSize: 12, color: C.gray3 }}>{v.endTime}</div>}
+            </div>
+            {/* カード */}
+            <div style={{ flex: 1, ...s.card, marginBottom: 4, borderLeft: `3px solid ${done ? C.kincha : C.ai}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{p?.name || '（不明）'}</div>
+                  <div style={{ fontSize: 12, color: C.gray3 }}>{v.startTime}〜{v.endTime}（{v.duration}分）</div>
+                  {t && <div style={{ fontSize: 12, color: C.ai, marginTop: 2 }}>担当: {t.name}</div>}
+                  {p?.symptoms && <div style={{ fontSize: 11, color: C.gray3, marginTop: 2 }}>{p.symptoms}</div>}
+                </div>
+                <div>
+                  {done ? (
+                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 99, background: '#fdf3dc', color: C.kincha, fontWeight: 700 }}>日報済</span>
+                  ) : (
+                    <button onClick={() => navigate('report_new', { visitId: v.id, date: v.date })}
+                      style={{ ...s.btn(), fontSize: 12, padding: '6px 10px' }}>
+                      日報作成
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -469,7 +564,7 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'home':       return <HomeScreen navigate={navigate} />
-      case 'schedule':   return <PlaceholderScreen title="行程表" navigate={navigate} />
+      case 'schedule':   return <ScheduleScreen navigate={navigate} />
       case 'patients':   return <PatientsScreen navigate={navigate} />
       case 'therapists': return <TherapistsScreen navigate={navigate} />
       case 'reports':    return <PlaceholderScreen title="日報" navigate={navigate} />
