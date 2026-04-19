@@ -790,6 +790,186 @@ function ReportNewScreen({ navigate, param }) {
   )
 }
 
+// ── 日報一覧・詳細 ────────────────────────────────────────────
+function ReportDetailScreen({ navigate, param }) {
+  const report    = param?.report
+  const patients  = LS.get('patients', [])
+  const therapists= LS.get('therapists', [])
+  if (!report) return <PlaceholderScreen title="日報が見つかりません" navigate={navigate} />
+
+  const p = patients.find(x => x.id === report.patientId)
+  const t = therapists.find(x => x.id === report.therapistId)
+  const officeName = LS.get('officeName', 'ハーベスト訪問施術院')
+
+  const printStyle = `
+    @media print {
+      body { font-family: 'Hiragino Mincho ProN','Yu Mincho',serif; font-size: 11pt; color: #000; background: #fff; }
+      .no-print { display: none !important; }
+      .print-page { max-width: 100%; padding: 10mm; }
+    }
+  `
+
+  return (
+    <div>
+      <style>{printStyle}</style>
+      <div className="no-print" style={{ ...s.pageWrap, paddingBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <button onClick={() => navigate('reports')} style={s.btn(C.gray2, C.sumi)}>
+            <ChevronLeft size={16} /> 一覧へ
+          </button>
+          <button onClick={() => window.print()} style={s.btn(C.kincha)}>印刷</button>
+        </div>
+      </div>
+
+      <div className="print-page" style={{ padding: '0 16px 80px', maxWidth: 640, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', borderBottom: `2px solid ${C.ai}`, paddingBottom: 8, marginBottom: 16 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>施術日報</div>
+          <div style={{ fontSize: 12, color: C.gray3 }}>{officeName}</div>
+        </div>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+          <tbody>
+            {[
+              ['日付',       report.date],
+              ['患者氏名',   p?.name || report.patientId],
+              ['フリガナ',   p?.furigana || ''],
+              ['年齢・性別', `${p?.age || ''}歳 ${p?.gender || ''}`],
+              ['保険種別',   p?.insurance || ''],
+              ['同意医師',   p?.doctor || ''],
+              ['医療機関',   p?.hospital || ''],
+              ['担当施術者', t?.name || report.therapistId],
+              ['施術時間',   `${report.startTime}〜${report.endTime}（${report.duration}分）`],
+            ].map(([k, v]) => (
+              <tr key={k} style={{ borderBottom: `1px solid ${C.gray2}` }}>
+                <td style={{ padding: '5px 8px', width: '35%', background: C.gray1, fontWeight: 600, fontSize: 12 }}>{k}</td>
+                <td style={{ padding: '5px 8px' }}>{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+          <tbody>
+            {[
+              ['血圧', report.vitals?.bpSys && report.vitals?.bpDia
+                ? `${report.vitals.bpSys} / ${report.vitals.bpDia} mmHg` : '未記録'],
+              ['脈拍', report.vitals?.pulse ? `${report.vitals.pulse} 回/分` : '未記録'],
+              ['体温', report.vitals?.temp  ? `${report.vitals.temp} ℃` : '未記録'],
+            ].map(([k, v]) => (
+              <tr key={k} style={{ borderBottom: `1px solid ${C.gray2}` }}>
+                <td style={{ padding: '5px 8px', width: '35%', background: '#fdf3dc', fontWeight: 600, fontSize: 12 }}>{k}</td>
+                <td style={{ padding: '5px 8px' }}>{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {[
+          { title: '施術部位', content: report.bodyParts?.join('、') || '（未記録）' },
+          { title: '施術内容', content: report.treatments?.join('、') || '（未記録）' },
+          { title: '所見・状態', content: report.findings || '（未記録）' },
+          { title: '改善・変化', content: report.improvements || '（未記録）' },
+          { title: '次回計画',  content: report.nextPlan  || '（未記録）' },
+          { title: '備考',      content: report.notes     || '' },
+        ].map(({ title, content }) => content && (
+          <div key={title} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.ai, borderBottom: `1px solid ${C.ai}`, paddingBottom: 2, marginBottom: 4 }}>{title}</div>
+            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', padding: '4px 0' }}>{content}</div>
+          </div>
+        ))}
+
+        <div style={{ marginTop: 32, display: 'flex', justifyContent: 'flex-end', gap: 24 }}>
+          {['確認者印', '施術者印'].map(label => (
+            <div key={label} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, marginBottom: 4 }}>{label}</div>
+              <div style={{ width: 56, height: 56, border: `1px solid ${C.sumi}`, borderRadius: '50%' }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReportsScreen({ navigate }) {
+  const [reports, setReports]     = useState(() => LS.get('reports', []))
+  const [filterMonth, setMonth]   = useState(new Date().toISOString().slice(0, 7))
+  const [filterPat, setFilterPat] = useState('')
+  const patients  = LS.get('patients', [])
+  const therapists= LS.get('therapists', [])
+  const patMap    = Object.fromEntries(patients.map(p => [p.id, p]))
+  const theMap    = Object.fromEntries(therapists.map(t => [t.id, t]))
+
+  const filtered = reports
+    .filter(r => (!filterMonth || r.date?.startsWith(filterMonth)))
+    .filter(r => (!filterPat || r.patientId === filterPat))
+    .sort((a, b) => b.date?.localeCompare(a.date))
+
+  const handleDelete = (id) => {
+    if (!confirm('この日報を削除しますか？')) return
+    const updated = reports.filter(r => r.id !== id)
+    setReports(updated); LS.set('reports', updated)
+  }
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('home')} style={s.btn(C.gray2, C.sumi)}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>日報一覧</h2>
+        <button onClick={() => navigate('report_new')} style={s.btn()}>
+          <Plus size={15} /> 作成
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input type="month" value={filterMonth} onChange={e => setMonth(e.target.value)}
+          style={{ ...s.input, flex: 1 }} />
+        <select value={filterPat} onChange={e => setFilterPat(e.target.value)} style={{ ...s.input, flex: 1 }}>
+          <option value="">全患者</option>
+          {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+
+      <div style={{ fontSize: 12, color: C.gray3, marginBottom: 8 }}>{filtered.length}件</div>
+
+      {filtered.length === 0 && (
+        <div style={{ ...s.card, textAlign: 'center', padding: 32, color: C.gray3 }}>日報がありません</div>
+      )}
+
+      {filtered.map(r => {
+        const p = patMap[r.patientId]
+        const t = theMap[r.therapistId]
+        return (
+          <div key={r.id} style={s.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>{p?.name || '不明'}</div>
+                <div style={{ fontSize: 12, color: C.gray3 }}>{r.date} {r.startTime}〜{r.endTime}</div>
+                {t && <div style={{ fontSize: 12, color: C.ai }}>担当: {t.name}</div>}
+                {r.bodyParts?.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.gray3, marginTop: 4 }}>
+                    {r.bodyParts.slice(0, 4).join('・')}{r.bodyParts.length > 4 ? '…' : ''}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => navigate('report_detail', { report: r })}
+                  style={{ ...s.btn(C.gray1, C.sumi), fontSize: 12, padding: '6px 10px' }}>詳細</button>
+                <button onClick={() => handleDelete(r.id)}
+                  style={{ ...s.btn('#fee', '#c00'), padding: '6px 10px' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -852,7 +1032,8 @@ export default function App() {
       case 'patients':   return <PatientsScreen navigate={navigate} />
       case 'therapists': return <TherapistsScreen navigate={navigate} />
       case 'report_new': return <ReportNewScreen navigate={navigate} param={param} />
-      case 'reports':    return <PlaceholderScreen title="日報" navigate={navigate} />
+      case 'reports':       return <ReportsScreen navigate={navigate} />
+      case 'report_detail': return <ReportDetailScreen navigate={navigate} param={param} />
       case 'monthly':    return <PlaceholderScreen title="月次報告書" navigate={navigate} />
       case 'settings':   return <PlaceholderScreen title="設定" navigate={navigate} />
       default:           return <HomeScreen navigate={navigate} />
