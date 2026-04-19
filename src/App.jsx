@@ -276,6 +276,141 @@ function PatientsScreen({ navigate }) {
   )
 }
 
+// ── 施術者マスタ ─────────────────────────────────────────────
+const THERAPIST_FIELDS = [
+  { key: 'name',          label: '氏名',       required: true },
+  { key: 'furigana',      label: 'フリガナ' },
+  { key: 'qualification', label: '資格',       type: 'select',
+    options: ['', 'あん摩マッサージ指圧師', 'はり師', 'きゅう師',
+              'あん摩マッサージ指圧師・はり師', 'あん摩マッサージ指圧師・はり師・きゅう師', 'その他'] },
+  { key: 'phone',   label: '電話番号', type: 'tel' },
+  { key: 'active',  label: '稼働状況', type: 'select', options: ['true', 'false'] },
+  { key: 'notes',   label: '備考',     type: 'textarea' },
+]
+
+function emptyTherapist() {
+  return { id: '', name: '', furigana: '', qualification: '', phone: '', active: 'true', notes: '' }
+}
+
+function TherapistForm({ initial, onSave, onCancel }) {
+  const [data, setData] = useState(initial || emptyTherapist())
+  const set = (k, v) => setData(d => ({ ...d, [k]: v }))
+
+  return (
+    <div style={s.card}>
+      {THERAPIST_FIELDS.map(({ key, label, type, options, required }) => (
+        <div key={key} style={{ marginBottom: 12 }}>
+          <label style={s.label}>{label}{required && <span style={{ color: '#c00' }}> *</span>}</label>
+          {type === 'textarea' ? (
+            <textarea value={data[key]} onChange={e => set(key, e.target.value)}
+              style={{ ...s.input, height: 60, resize: 'vertical' }} />
+          ) : type === 'select' && key === 'active' ? (
+            <select value={String(data[key])} onChange={e => set(key, e.target.value)} style={s.input}>
+              <option value="true">稼働中</option>
+              <option value="false">休止中</option>
+            </select>
+          ) : type === 'select' ? (
+            <select value={data[key]} onChange={e => set(key, e.target.value)} style={s.input}>
+              {options.map(o => <option key={o} value={o}>{o || '選択...'}</option>)}
+            </select>
+          ) : (
+            <input type={type || 'text'} value={data[key]} onChange={e => set(key, e.target.value)} style={s.input} />
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <button onClick={() => { if (!data.name.trim()) { alert('氏名は必須です'); return } onSave(data) }}
+          style={{ ...s.btn(), flex: 1 }}>
+          <Save size={15} /> 保存
+        </button>
+        <button onClick={onCancel} style={{ ...s.btn(C.gray2, C.sumi), flex: 1 }}>
+          <XCircle size={15} /> キャンセル
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function TherapistsScreen({ navigate }) {
+  const [therapists, setTherapists] = useState(() => LS.get('therapists', []))
+  const [editing, setEditing]       = useState(null)
+  const [adding, setAdding]         = useState(false)
+
+  const save = (ts) => { setTherapists(ts); LS.set('therapists', ts) }
+
+  const handleSave = (data) => {
+    if (data.id) {
+      save(therapists.map(t => t.id === data.id ? data : t))
+    } else {
+      save([...therapists, { ...data, id: 't' + Date.now() }])
+    }
+    setEditing(null); setAdding(false)
+  }
+
+  const handleDelete = (id) => {
+    if (!confirm('この施術者を削除しますか？')) return
+    save(therapists.filter(t => t.id !== id))
+  }
+
+  return (
+    <div style={s.pageWrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => navigate('home')} style={s.btn(C.gray2, C.sumi)}>
+          <ChevronLeft size={16} />
+        </button>
+        <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>施術者マスタ</h2>
+        <button onClick={() => { setAdding(true); setEditing(null) }} style={s.btn()}>
+          <Plus size={15} /> 新規
+        </button>
+      </div>
+
+      {adding && (
+        <TherapistForm initial={emptyTherapist()} onSave={handleSave} onCancel={() => setAdding(false)} />
+      )}
+
+      {therapists.length === 0 && !adding && (
+        <div style={{ ...s.card, textAlign: 'center', padding: 32, color: C.gray3 }}>施術者が登録されていません</div>
+      )}
+
+      {therapists.map(t => (
+        editing?.id === t.id ? (
+          <TherapistForm key={t.id} initial={editing} onSave={handleSave} onCancel={() => setEditing(null)} />
+        ) : (
+          <div key={t.id} style={s.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 16 }}>{t.name}</span>
+                  <span style={{
+                    fontSize: 11, padding: '2px 7px', borderRadius: 99,
+                    background: String(t.active) === 'true' ? '#e6f4e6' : C.gray1,
+                    color: String(t.active) === 'true' ? '#2a6b2a' : C.gray3,
+                  }}>
+                    {String(t.active) === 'true' ? '稼働中' : '休止中'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: C.gray3 }}>{t.furigana}</div>
+                {t.qualification && <div style={{ fontSize: 13, color: C.ai, marginTop: 4 }}>{t.qualification}</div>}
+                {t.phone && <div style={{ fontSize: 12, color: C.gray3, marginTop: 2 }}>{t.phone}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setEditing(t); setAdding(false) }}
+                  style={{ ...s.btn(C.gray1, C.sumi), padding: '6px 10px' }}>
+                  <Edit2 size={14} />
+                </button>
+                <button onClick={() => handleDelete(t.id)}
+                  style={{ ...s.btn('#fee', '#c00'), padding: '6px 10px' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      ))}
+    </div>
+  )
+}
+
 // ── プレースホルダー画面（未実装） ──────────────────────────
 function PlaceholderScreen({ title, navigate }) {
   return (
@@ -336,7 +471,7 @@ export default function App() {
       case 'home':       return <HomeScreen navigate={navigate} />
       case 'schedule':   return <PlaceholderScreen title="行程表" navigate={navigate} />
       case 'patients':   return <PatientsScreen navigate={navigate} />
-      case 'therapists': return <PlaceholderScreen title="施術者マスタ" navigate={navigate} />
+      case 'therapists': return <TherapistsScreen navigate={navigate} />
       case 'reports':    return <PlaceholderScreen title="日報" navigate={navigate} />
       case 'monthly':    return <PlaceholderScreen title="月次報告書" navigate={navigate} />
       case 'settings':   return <PlaceholderScreen title="設定" navigate={navigate} />
